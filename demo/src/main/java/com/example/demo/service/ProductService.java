@@ -30,4 +30,8 @@ public interface ProductService {
     Map<String,Product> getCartDetails();
 
     void reAddItemBacktoCatalog(String id);
+
+    boolean deleteItemFromCart(String id);
+
+    CartResponse checkoutCart();
 }

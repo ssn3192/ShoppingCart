@@ -1,21 +1,15 @@
 package com.example.demo.controller;
 
-import com.example.demo.dao.ProductDao;
 import com.example.demo.model.Product;
-import com.example.demo.model.response.ApiResponse;
-import com.example.demo.model.response.CartResponse;
-import com.example.demo.model.response.CatalogSizeResponse;
-import com.example.demo.model.response.ProductByIdResponse;
+import com.example.demo.model.response.*;
 import com.example.demo.service.ProductService;
-import jakarta.annotation.PostConstruct;
+import org.apache.commons.lang3.NotImplementedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -31,14 +25,18 @@ public class TestController {
 
     @GetMapping("size")
     public ResponseEntity<CatalogSizeResponse> getCatalogSize(){
-        CatalogSizeResponse response = new CatalogSizeResponse();
-        int size = productService.getCatalogSize();
-        response.count = size;
-        response.success = size > 0;
-        if(!response.success){
-            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(response);
+        try{
+            int size = productService.getCatalogSize();
+            boolean isSuccess = size > 0;
+            if(!isSuccess){
+                return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(new CatalogSizeResponse(isSuccess));
+            }
+            return ResponseEntity.ok(new CatalogSizeResponse(isSuccess, size));
         }
-        return ResponseEntity.ok(response);
+        catch (Exception ex){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new CatalogSizeResponse(false));
+        }
     }
 
     @GetMapping("all")
@@ -48,108 +46,105 @@ public class TestController {
     }
 
 
-    @GetMapping("/healthCheck/{id}")
-    public ResponseEntity<ApiResponse> healthCheck(@PathVariable String id) {
-        ProductByIdResponse res = new ProductByIdResponse();
-        var product = productService.getById(id);
-        product.ifPresent(value -> res.products.add(value));
-        res.success = product.isPresent();
-        if(!res.success) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(res);
+    @GetMapping("/catalog/{id}")
+    public ResponseEntity<ProductByIdResponse> getItem(@PathVariable String id) {
+        try{
+            var mayBeProduct = productService.getById(id);
+            if(mayBeProduct.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ProductByIdResponse(false));
+            }
+            var product = mayBeProduct.get();
+            return ResponseEntity.ok(new ProductByIdResponse(true, List.of(product)));
         }
-        return ResponseEntity.ok(res);
+        catch (Exception ex){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ProductByIdResponse(false));
+        }
     }
 
     @GetMapping("cart")
     public ResponseEntity<CartResponse> getCart(){
         try{
-
             CartResponse response = productService.getCart();
             response.success = true;
             return ResponseEntity.ok(response);
         }
         catch (Exception ex){
             return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                    .body(new CartResponse());
+                    .body(new CartResponse(false));
         }
     }
 
     @GetMapping("cart/item/{id}")
     public ResponseEntity<ProductByIdResponse> itemFromCart(@PathVariable String id){
         try{
-            ProductByIdResponse response = new ProductByIdResponse();
             Product product = productService.itemFromCart(id);
-            if(product != null){
-                response.products.add(product);
-                response.success = true;
-                return ResponseEntity.ok(response);
+            if(product == null){
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ProductByIdResponse(false));
             }
-            response.success = false;
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(response);
+            return ResponseEntity.ok(new ProductByIdResponse(true, List.of(product)));
         }
         catch (Exception ex){
-            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                    .body(new ProductByIdResponse());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ProductByIdResponse(false));
         }
     }
 
     @DeleteMapping("cart/item/{id}")
-    public  ResponseEntity<ApiResponse> deleteItem(@PathVariable String id){
-        ApiResponse response = new ApiResponse();
+    public  ResponseEntity<ApiResponse> deleteItemFromCart(@PathVariable String id){
         try{
-            if(productService.getCartDetails().containsKey(id)){
-                productService.getCartDetails().remove(id);
-                //re-add back item to the catalog with quantity as 1
-             //   productService.reAddItemBacktoCatalog(id);
-                response.success = true;
-                return ResponseEntity.ok(response);
+            boolean isSuccess = productService.deleteItemFromCart(id);
+            if(!isSuccess){
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(new ApiResponse(false));
             }
-            response.success = false;
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(response);
+            return ResponseEntity.ok(new ApiResponse(true));
         }
         catch (Exception ex){
             return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                    .body(new ApiResponse(){});
+                    .body(new ApiResponse(false));
         }
     }
 
 
     @PostMapping("cart/checkout")
-    public  ResponseEntity<ApiResponse> checkout() {
+    public  ResponseEntity<CartResponse> checkout() {
         try{
-            if(productService.getCartDetails().isEmpty()){
+            CartResponse response = productService.checkoutCart();
+            if(!response.success){
                 return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                        .body(new ApiResponse(){});
+                        .body(response);
             }
-            return null;
+            return ResponseEntity.ok(response);
         }
         catch (Exception ex){
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiResponse(){});
+                    .body(new CartResponse(false));
         }
     }
 
     @PostMapping("cart/item/{id}")
     public  ResponseEntity<ApiResponse> addItemtoCart(@PathVariable String id){
         try{
-            ApiResponse res = new ApiResponse();
-            Set<String> response  = productService.addItem(id);
-            if(!response.isEmpty() && response.contains(id)){
-                res.success = true;
-                return ResponseEntity.ok(res);
-            }
-            else{
-                res.success = false;
+            Set<String> cartItemIds = productService.addItem(id);
+            if(cartItemIds.isEmpty() || !cartItemIds.contains(id)){
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(res);
+                        .body(new ApiResponse(false));
             }
-
+            return ResponseEntity.ok(new ApiResponse(true));
+        }
+        catch (NotImplementedException ex){
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                    .body(new ApiResponse(false));
+        }
+        catch (IllegalArgumentException ex){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponse(false));
         }
         catch (Exception ex){
-            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-                    .body(new ApiResponse(){});
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiResponse(false));
         }
     }
 

@@ -4,7 +4,6 @@ import com.example.demo.model.Product;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
-import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,11 +26,11 @@ public class DataConfig {
     @Autowired
     private ResourceLoader resourceLoader;
 
-    private Map<String, Product> data = new HashMap<>();
+    private Map<String, Product> catalog = new HashMap<>();
     private Map<String, Product> cart = new HashMap<>();
 
-    public Map<String, Product> getData() {
-        return data;
+    public Map<String, Product> getCatalog() {
+        return catalog;
     }
 
     public void createCart(String id, Product product){
@@ -43,12 +42,12 @@ public class DataConfig {
     }
 
     public void commit(Map<String, Product> newCatalog){
-        this.data = newCatalog;
+        this.catalog = newCatalog;
     }
 
     @PostConstruct
     public void init() {
-        System.out.println("Initialization of data");
+        LOG.info("Initialization of catalog data");
         ObjectMapper objectMapper = new ObjectMapper();
         try {
             Resource resource = resourceLoader.getResource("classpath:" + DATA_FILE_NAME);
@@ -57,19 +56,16 @@ public class DataConfig {
                     new TypeReference<>() {}
             );
 
-            data = products.stream().collect(Collectors.toMap(Product::id, Function.identity()));
+            catalog = products.stream().collect(Collectors.toMap(Product::id, Function.identity()));
 
 
-            LOG.info(getData().toString());
+            //LOG.info(getCatalog().toString());
 
         }catch (IOException e) {
             LOG.error("Error while deserializing data", e);
         }catch (Exception e) {
             LOG.error("Error while reading data", e);
         }
-
-
-
     }
 
 
